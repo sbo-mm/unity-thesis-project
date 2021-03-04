@@ -1,35 +1,54 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
 public class Testing : MonoBehaviour
 {
-    ulong seed = 0;
+#if UNITY_STANDALONE_OSX
+    [DllImport("AudioPluginModalSynth")]
+    private unsafe static extern int VariableModalFilter_SetGains(
+        int index, 
+        int npoints, 
+        int* impactPoints, 
+        float* weights
+        );
+#endif
 
-    // Start is called before the first frame update
+    bool set = false;
+
     void Start()
     {
-        var r = new System.Random();
-        seed = (ulong)r.Next();
 
 
-        for (int i = 0; i < 45; i++)
+    }
+
+    private void Update()
+    {
+        // 5,960464E-08, 0,9999999, 0, 106, 8, 109
+        if (!set && Input.GetKeyDown(KeyCode.Q))
         {
-            Debug.Log(GetRandom(-1f, 1f));
+            unsafe
+            {
+                int[] ip = { 106, 8, 109 };
+                float[] wp = { 5.960464E-08f, 0.9999999f, 0f };
+
+                fixed(int* _ip = &ip[0])
+                fixed(float* _wp = &wp[0])
+                {
+                    VariableModalFilter_SetGains(
+                        index: 0,
+                        npoints: 1,
+                        impactPoints: _ip,
+                        weights: _wp
+                    );
+                }
+            }
+            Debug.Log("Set Gains");
+            set = true;
         }
 
     }
 
-    float GetRandom()
-    {
-        const float scale = 1.0f / (float)0x7FFFFFFF;
-        seed = seed * 69069 + 1;
-        return (((seed >> 16) ^ seed) & 0x7FFFFFFF) * scale;
-    }
-
-    float GetRandom(float minVal, float maxVal)
-    {
-        return minVal + (maxVal - minVal) * GetRandom();
-    }
 }

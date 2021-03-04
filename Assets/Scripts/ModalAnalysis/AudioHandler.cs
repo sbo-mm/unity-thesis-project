@@ -55,17 +55,8 @@ namespace ModalAnalysis
             audioQueue = new ConcurrentQueue<float[]>();
         }
 
-        private float LogisticFunc(float x)
-        {
-            const float x0 = 0f;
-            const float L = 2f;
-            const float k = 0.65f;
-            return L / (1.0f + Mathf.Exp(-k * (x - x0))) - 1.0f;
-        }
-
         private float CompressLogistic(float sample)
         {
-            //return LogisticFunc(sample);
             return (LF_MAXIMUM / (1 + Mathf.Exp(-LF_GROWTHRATE * (sample - LF_MIDPOINT)))) - LF_HALFMAX;
         }
 
@@ -114,7 +105,7 @@ namespace ModalAnalysis
             if (audioQueue != null && samples != null)
             {
                 float sampleSum = samples.Sum(Mathf.Abs);
-                if (CompressLogistic(sampleSum) < 0.1f)
+                if (CompressLogistic(sampleSum) < 0.5f)
                     return;
 
                 if (samples.Length == AudioQueueBufferSize)

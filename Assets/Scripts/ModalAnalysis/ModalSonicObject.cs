@@ -53,6 +53,8 @@ namespace ModalAnalysis
             yt_1 = new float[nf];
             yt_2 = new float[nf];
 
+            //Debug.Log($"[{name}] modes: {Model.NumberOfModes}, verts {Model.NumberOfVertices}");
+
             MarkReadyForAudioRendering();
         }
 

@@ -73,6 +73,7 @@ namespace ModalAnalysis
 
             float impactMag = collision.relativeVelocity.magnitude;
             float impactVelocity = objRigidbody.mass * impactMag * impactMag;
+            //Debug.Log($"{name}: {impactVelocity}");
             impact.Hit(impactVelocity);
         }
 

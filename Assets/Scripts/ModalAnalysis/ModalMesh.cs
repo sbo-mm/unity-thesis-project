@@ -117,6 +117,8 @@ namespace ModalAnalysis
                 triangles[i, 0] = meshData.Triangles[triangleOffset];
                 triangles[i, 1] = meshData.Triangles[triangleOffset + 1];
                 triangles[i, 2] = meshData.Triangles[triangleOffset + 2];
+
+                Debug.Log($"{name}: {wa}, {wb}, {wc}, {triangles[i, 0]}, {triangles[i, 1]}, {triangles[i, 2]}");
             }
 
             return (triangles, barycentricWeights);
