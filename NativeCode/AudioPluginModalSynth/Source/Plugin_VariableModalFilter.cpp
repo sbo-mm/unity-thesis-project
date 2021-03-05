@@ -74,13 +74,13 @@ namespace VariableModalFilter
             twoRcosTheta = 2.0f * R * cos(theta);
             RSinTheta = R * sin(theta);
             R2 = R * R;
-            ampR = 0;
             yt_1 = 0;
             yt_2 = 0;
         }
         
         inline void SetupResonator(int ix)
         {
+            ampR = 0;
             filteridx = ix;
             ComputeFilterCoefs();
         }
@@ -93,10 +93,11 @@ namespace VariableModalFilter
         inline void SetGain(int npoints, int* impactPoints, float *weights)
         {
             const int pw = 3;
+            float g0, g1, g2, w0, w1, w2;
+            
+            ampR = 0;
             float oneOverN = 1.0f / (float)npoints;
             
-            float g0, g1, g2;
-            float w0, w1, w2;
             for (int i = 0; i < npoints; i += pw)
             {
                 // Fetch the gains corresponding to the triangle vertices we have hit
@@ -112,7 +113,7 @@ namespace VariableModalFilter
                 
                 // Compute weighted average of the three gains
                 float avgGain = g0 * w0 + g1 * w1 + g2 * w2;
-                ampR = oneOverN * avgGain * RSinTheta;
+                ampR += oneOverN * avgGain * RSinTheta;
             }
         }
         
