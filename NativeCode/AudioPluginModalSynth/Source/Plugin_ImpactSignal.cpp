@@ -2,94 +2,117 @@
 //  Plugin_ImpactSignal.cpp
 //  AudioPluginModalSynth
 //
-//  Created by Sophus Bénée Olsen on 04/03/2021.
-//  Copyright © 2021 Sophus Bénée Olsen. All rights reserved.
+//  Adapted from Unity Technologies (https://github.com/Unity-Technologies/NativeAudioPlugins)
+//  by Sophus Bénée Olsen on 04/03/2021.
 //
 
 #include "AudioPluginUtil.h"
 
 namespace ImpactSignal
 {
-    // Use an enum for the plugin parameters
-    // we want Unity to have access to
-    // By default, Unity manipulates exposed
-    // parameters with a slider in the editor
+    const int MAXIMPACTS = 1000;
+    const int MAXINSTANCES = 4;
+    
     enum Param
     {
+        P_INSTANCE,
         P_GAIN,
+        P_THR,
+        P_MAXIMPACTS,
         P_NUM
-        // Since enum values start at 0, the last value
-        // gives us the total number of parameters in the enum
-        // However, we don't use it as an actual parameter
     };
     
-    // This is a callback we'll have the SDK invoke when initializing parameters
-    // Instantiate the parameter details here
+    struct Impact
+    {
+        float volume;
+        float decay;
+        float lpf;
+        float bpf;
+        float cut;
+        float bw;
+        inline float Process(Random& random)
+        {
+            volume *= decay;
+            lpf += cut * bpf;
+            bpf += cut * (random.GetFloat(-1.0f, 1.0f) - lpf - bpf * bw);
+            return bpf * volume;
+        }
+    };
+    
+    struct EffectData
+    {
+        float p[P_NUM];
+    };
+    
+    struct ImpactInstance
+    {
+        Random random;
+        int maximpacts;
+        int numimpacts;
+        RingBuffer<MAXIMPACTS, Impact> impactrb;
+        Impact impacts[MAXIMPACTS];
+    };
+    
+    inline ImpactInstance* GetImpactInstance(int index)
+    {
+        static bool initialized[MAXINSTANCES] = { false };
+        static ImpactInstance instance[MAXINSTANCES];
+        if (index < 0 || index >= MAXINSTANCES)
+            return NULL;
+        if (!initialized[index])
+        {
+            initialized[index] = true;
+            instance[index].maximpacts = MAXIMPACTS;
+            instance[index].numimpacts = 0;
+        }
+        return &instance[index];
+    }
+    
     int InternalRegisterEffectDefinition(UnityAudioEffectDefinition& definition)
     {
         int numparams = P_NUM;
-        definition.paramdefs = new UnityAudioParameterDefinition [numparams];
-        
-        RegisterParameter(definition,        // EffectDefinition object passed to us
-                          "Gain Multiplier", // The parameter label shown in the Unity editor
-                          "",                // The units (ex. dB, Hz, cm, s, etc)
-                          0.0f,              // Minimum parameter value
-                          2.0f,              // Maximum parameter value
-                          1.0f,              // Default parameter value
-                          1.0f,              // Display scale, Unity editor shows actualValue*displayScale
-                          1.0f,              // Display exponent, in case you want a slider operating on an exponential scale in the editor
-                          P_GAIN);           // The index of the parameter in question; use the enum value
-        
+        definition.paramdefs = new UnityAudioParameterDefinition[numparams];
+        RegisterParameter(definition, "Instance", "", 0.0f, MAXINSTANCES - 1, 0.0f, 1.0f, 1.0f, P_INSTANCE, "Determines the instance from which impacts are received via ImpactGenerator_AddImpact");
+        RegisterParameter(definition, "Gain", "dB", -120.0f, 50.0f, 0.0f, 1.0f, 1.0f, P_GAIN, "Overall gain");
+        RegisterParameter(definition, "Threshold", "dB", -120.0f, 0.0f, -60.0f, 1.0f, 1.0f, P_THR, "Threshold after which impacts stop playing");
+        RegisterParameter(definition, "MaxImpacts", "", 1.0f, MAXIMPACTS, 200.0f, 1.0f, 1.0f, P_MAXIMPACTS, "Maximum number of impact sounds played simultaneously on this instance");
         return numparams;
     }
     
-    // Define a struct that will hold the plugin's state
-    // Our noise plugin is very simple, so we're only interested
-    // in keeping track of the single parameter we have: gain
-    struct EffectData
-    {
-        float p[P_NUM]; // Parameters
-    };
-    
-    // UNITY_AUDIODSP_RESULT is defined as `int`
-    // UNITY_AUDIODSP_CALLBACK is defined as nothing
-    // So behind the scenes, the function signature is really `int CreateCallback(UnityAudioEffectState* state)`
-    // This callback is invoked by Unity when the plugin is loaded
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK CreateCallback(UnityAudioEffectState* state)
     {
-        EffectData* effectdata = new EffectData;    // Create a new pointer to the struct defined earlier
-        memset(effectdata, 0, sizeof(EffectData));  // Quickly fill memory location with zeros
-        effectdata->p[P_GAIN] = 1.0f;               // Initialize effectdata with default parameter value(s)
-        state->effectdata = effectdata;             // Add our effectdata pointer to the state so we can reach it in other callbacks
-        // Use the callback we defined earlier to initialize the parameters
+        EffectData* effectdata = new EffectData;
+        memset(effectdata, 0, sizeof(EffectData));
+        state->effectdata = effectdata;
         InitParametersFromDefinitions(InternalRegisterEffectDefinition, effectdata->p);
-        //srand(time(nullptr));                       // Seeds the random number generator
-        return UNITY_AUDIODSP_OK;                   // All is well!
+        return UNITY_AUDIODSP_OK;
     }
     
-    // This callback is invoked by Unity when the plugin is unloaded
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK ReleaseCallback(UnityAudioEffectState* state)
     {
-        // Grab the EffectData pointer we added earlier in CreateCallback
-        EffectData *data = state->GetEffectData<EffectData>();
-        delete data; // Cleanup
+        EffectData* data = state->GetEffectData<EffectData>();
+        delete data;
         return UNITY_AUDIODSP_OK;
     }
     
-    // Called whenever a parameter is changed from the editor
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK SetFloatParameterCallback(UnityAudioEffectState* state, int index, float value)
     {
-        EffectData *data = state->GetEffectData<EffectData>(); // Grab EffectData
-        if (index >= P_NUM) // index should never point to a parameter that we haven't defined
+        EffectData* data = state->GetEffectData<EffectData>();
+        if (index >= P_NUM)
             return UNITY_AUDIODSP_ERR_UNSUPPORTED;
-        data->p[index] = value; // Set the parameter to the value the editor gave us
+        data->p[index] = value;
+        if (index == P_MAXIMPACTS)
+        {
+            ImpactInstance* instance = GetImpactInstance((int)data->p[P_INSTANCE]);
+            if (instance != NULL)
+                instance->maximpacts = value;
+        }
         return UNITY_AUDIODSP_OK;
     }
     
-    // Internally used by the SDK to query parameter values, not sure when this is called...
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK GetFloatParameterCallback(UnityAudioEffectState* state, int index, float* value, char *valuestr)
     {
-        EffectData *data = state->GetEffectData<EffectData>();
+        EffectData* data = state->GetEffectData<EffectData>();
         if (index >= P_NUM)
             return UNITY_AUDIODSP_ERR_UNSUPPORTED;
         if (value != NULL)
@@ -99,44 +122,64 @@ namespace ImpactSignal
         return UNITY_AUDIODSP_OK;
     }
     
-    // Also unsure where this is used, but it's required to be defined, so just return from the function as soon as it's called
     int UNITY_AUDIODSP_CALLBACK GetFloatBufferCallback(UnityAudioEffectState* state, const char* name, float* buffer, int numsamples)
     {
         return UNITY_AUDIODSP_OK;
     }
     
-    // ProcessCallback gets called as long as the plugin is loaded
-    // This includes when the editor is not in play mode!
-    UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK ProcessCallback(
-      UnityAudioEffectState* state, // The state gets passed into all callbacks
-      float* inbuffer,              // Plugins can be chained together; inbuffer holds the signal incoming from another plugin, or an AudioSource
-      float* outbuffer,             // We fill outbuffer with the signal Unity should send to the speakers
-      unsigned int length,          // The number of samples the buffers hold
-      int inchannels,               // The number of channels the incoming signal uses
-      int outchannels)              // The number of channels the outgoing signal uses
+    UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK ProcessCallback(UnityAudioEffectState* state, float* inbuffer, float* outbuffer, unsigned int length, int inchannels, int outchannels)
     {
-        // Grab the EffectData struct we created in CreateCallback
-        EffectData *data = state->GetEffectData<EffectData>();
+        EffectData* data = state->GetEffectData<EffectData>();
         
-        // A gain multiplier to silence the plugin when not in play mode or muted, since ProcessCallback is still invoked in those cases
-        float wetTarget = ((state->flags & UnityAudioEffectStateFlags_IsPlaying) && !(state->flags & (UnityAudioEffectStateFlags_IsMuted | UnityAudioEffectStateFlags_IsPaused))) ? 1.0f : 0.0f;
+        memset(outbuffer, 0, sizeof(float) * length * outchannels);
         
-        // For each sample going to the output buffer
-        for(unsigned int n = 0; n < length; n++)
+        ImpactInstance* instance = GetImpactInstance((int)data->p[P_INSTANCE]);
+        if (instance == NULL)
+            return UNITY_AUDIODSP_OK;
+        
+        float gain = powf(10.0f, data->p[P_GAIN] * 0.05f);
+        float thr = powf(10.0f, data->p[P_THR] * 0.05f);
+        
+        Impact imp;
+        while (instance->impactrb.Read(imp))
+            if (instance->numimpacts < instance->maximpacts)
+                instance->impacts[instance->numimpacts++] = imp;
+        
+        int i = 0;
+        while (i < instance->numimpacts)
         {
-            // For each channel of the sample
-            for(int i = 0; i < outchannels; i++)
+            Impact& imp = instance->impacts[i];
+            for (unsigned int n = 0; n < length; n++)
             {
-                // Generate a random float in the range [-1.0, 1.0] (fixed-point arithmetic)
-                int rInt = rand() % 20000;
-                rInt -= 10000;
-                float r = rInt / 10000.0f;
-                
-                // Write the sample to the buffer
-                outbuffer[n * outchannels + i] = r * wetTarget * data->p[P_GAIN];
+                float impact = imp.Process(instance->random) * gain;
+                for (int c = 0; c < inchannels; c++)
+                    outbuffer[n * inchannels + c] += impact;
             }
+            if (imp.volume < thr)
+                imp = instance->impacts[--instance->numimpacts];
+            else
+                ++i;
         }
         
         return UNITY_AUDIODSP_OK;
+    }
+    
+    extern "C" UNITY_AUDIODSP_EXPORT_API int ImpactGenerator_AddImpact(int index, float volume, float decay, float cut, float bw)
+    {
+        ImpactInstance* instance = GetImpactInstance(index);
+        if (instance == NULL)
+            return -1;
+        if (instance->numimpacts >= instance->maximpacts)
+            return -3;
+        
+        Impact imp;
+        imp.volume = volume;
+        imp.decay = decay;
+        imp.cut = cut;
+        imp.bw = bw;
+        imp.lpf = 0.0f;
+        imp.bpf = 0.0f;
+        instance->impactrb.Feed(imp);
+        return 1;
     }
 }

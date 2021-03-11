@@ -15,29 +15,15 @@ namespace ModalAnalysis
         {
             base.Start();
             outputBuffer = new float[AudioQueueBufferSize];
-            synthesisThread = AudioManager.GetSynthesisThread(Run);
         }
 
-        private void Run(object token)
+        protected override void OnRequestSamples(float[] output, int nsamples)
         {
-            CancellationToken ctToken 
-                = (CancellationToken)token;
-
-            while (true)
-            {
-                GetForce(outputBuffer, AudioQueueBufferSize);
-                Write(outputBuffer);
-
-                if (ctToken.IsCancellationRequested)
-                {
-                    break;
-                }
-            }
+            GetForce(output, nsamples);
         }
 
         public void MarkReadyForAudioRendering()
         {
-            synthesisThread.Start();
             AudioObjectReady = true;
         }
 

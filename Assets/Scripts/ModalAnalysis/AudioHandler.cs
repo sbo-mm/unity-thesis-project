@@ -42,17 +42,14 @@ namespace ModalAnalysis
         protected bool AudioObjectReady { get; set; } = false;
 
         // Private
-        private AudioManager audioManager;
         private float[] auxillaryBuffer;
-        private ConcurrentQueue<float[]> audioQueue;
+        private AudioManager audioManager;
 
         protected void Start()
         {
             audioManager = GameObject.Find("Manager")
                 .GetComponent<AudioManager>();
-
             auxillaryBuffer = new float[AudioQueueBufferSize];
-            audioQueue = new ConcurrentQueue<float[]>();
         }
 
         private float CompressLogistic(float sample)
@@ -76,18 +73,10 @@ namespace ModalAnalysis
         {
             if (!AudioObjectReady)
                 return;
-
-            if (audioQueue.IsEmpty)
-                return;
-
+              
             for (int n = 0; n < UnityAudioBufferSize; n += AudioQueueBufferSize)
             {
-                if (audioQueue.IsEmpty)
-                    break;
-
-                if (audioQueue.TryDequeue(out float[] samples))
-                    CopyTo(samples, auxillaryBuffer);
-
+                OnRequestSamples(auxillaryBuffer, AudioQueueBufferSize);
                 for (int j = 0; j < AudioQueueBufferSize; j++)
                 {
                     float sample = auxillaryBuffer[j];
@@ -100,21 +89,6 @@ namespace ModalAnalysis
             }
         }
 
-        protected void Write(float[] samples)
-        {
-            if (audioQueue != null && samples != null)
-            {
-                float sampleSum = samples.Sum(Mathf.Abs);
-                if (CompressLogistic(sampleSum) < 0.5f)
-                    return;
-
-                if (samples.Length == AudioQueueBufferSize)
-                {
-                    float[] aux = new float[samples.Length];
-                    CopyTo(samples, aux);
-                    audioQueue.Enqueue(aux);
-                }
-            }
-        }
+        protected abstract void OnRequestSamples(float[] output, int nsamples);
     }
 }

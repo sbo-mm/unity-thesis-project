@@ -89,10 +89,10 @@ namespace ModalAnalysis
             wa = 1.0f - wc - wb;
         }
 
-        public (int[,], float[,]) GetCollisionVertices(Vector3[] collisionPoints)
+        public (int[], float[]) GetCollisionVertices(Vector3[] collisionPoints)
         {
-            int[,] triangles = new int[collisionPoints.Length, GEOMDOF];
-            float[,] barycentricWeights = new float[collisionPoints.Length, GEOMDOF];
+            int[] triangles = new int[collisionPoints.Length * GEOMDOF];
+            float[] barycentricWeights = new float[collisionPoints.Length * GEOMDOF];
 
             for (int i = 0; i < collisionPoints.Length; i++)
             {
@@ -111,14 +111,13 @@ namespace ModalAnalysis
                 float wa, wb, wc;
                 GetBarycentricWeights(colpoint, p, q, r, out wa, out wb, out wc);
 
-                barycentricWeights[i, 0] = wa;
-                barycentricWeights[i, 1] = wb;
-                barycentricWeights[i, 2] = wc;
-                triangles[i, 0] = meshData.Triangles[triangleOffset];
-                triangles[i, 1] = meshData.Triangles[triangleOffset + 1];
-                triangles[i, 2] = meshData.Triangles[triangleOffset + 2];
-
-                Debug.Log($"{name}: {wa}, {wb}, {wc}, {triangles[i, 0]}, {triangles[i, 1]}, {triangles[i, 2]}");
+                int os = i * 3;
+                barycentricWeights[os + 0] = wa;
+                barycentricWeights[os + 1] = wb;
+                barycentricWeights[os + 2] = wc;
+                triangles[os + 0] = meshData.Triangles[triangleOffset];
+                triangles[os + 1] = meshData.Triangles[triangleOffset + 1];
+                triangles[os + 2] = meshData.Triangles[triangleOffset + 2];
             }
 
             return (triangles, barycentricWeights);

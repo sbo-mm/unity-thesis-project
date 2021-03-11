@@ -6,6 +6,7 @@ using UnityEngine;
 
 public class Testing : MonoBehaviour
 {
+    /*
 #if UNITY_STANDALONE_OSX
     [DllImport("AudioPluginModalSynth")]
     private unsafe static extern int VariableModalFilter_SetGains(
@@ -15,6 +16,7 @@ public class Testing : MonoBehaviour
         float* weights
         );
 #endif
+    */
 
     bool set = false;
 
@@ -27,6 +29,7 @@ public class Testing : MonoBehaviour
     private void Update()
     {
         // 5,960464E-08, 0,9999999, 0, 106, 8, 109
+        /*
         if (!set && Input.GetKeyDown(KeyCode.Q))
         {
             unsafe
@@ -48,6 +51,7 @@ public class Testing : MonoBehaviour
             Debug.Log("Set Gains");
             set = true;
         }
+        */
 
     }
 
