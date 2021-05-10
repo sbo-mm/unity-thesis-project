@@ -10,32 +10,44 @@ namespace ModalAnalysis
     [RequireComponent(typeof(MeshFilter))]
     public class ModalMesh : MonoBehaviour
     {
-        // Static
-        private static readonly MeshWelder welder = new MeshWelder();
+        static private Dictionary<string, SimpleMesh> simpleMeshDict =
+            new Dictionary<string, SimpleMesh>();
+        static private readonly MeshWelder welder = new MeshWelder();
 
         // Const
         private const int GEOMDOF = 3;
 
+        // Public Properties
+        public SimpleMesh MeshData { get; set; }
+
         // Private
-        private SimpleMesh meshData;
+        //private SimpleMesh meshData;
         private Collider objCollider;
         private Transform objTransform;
         private KDTree<float, int> triTree;
 
-        public SimpleMesh InitMesh()
+        private void Awake()
         {
-            Mesh realMesh = GetComponent<MeshFilter>().mesh;
-            welder.SetMesh(realMesh);
+            Mesh realMesh = 
+                GetComponent<MeshFilter>().sharedMesh;
 
-            int[] weldedTriangles; Vector3[] weldedVertices;
-            welder.WeldAndGet(out weldedVertices, out weldedTriangles);
-            meshData = new SimpleMesh()
+            if (!simpleMeshDict.ContainsKey(realMesh.name))
             {
-                Vertices = weldedVertices,
-                Triangles = weldedTriangles
-            };
+                welder.SetMesh(realMesh);
+                int[] weldedTriangles;
+                Vector3[] weldedVertices;
+                welder.WeldAndGet(out weldedVertices, out weldedTriangles);
+                var meshData = new SimpleMesh
+                {
+                    Vertices = weldedVertices,
+                    Triangles = weldedTriangles,
+                    MeshName = realMesh.name
+                };
 
-            return meshData;
+                simpleMeshDict.Add(realMesh.name, meshData);
+            }
+
+            MeshData = simpleMeshDict[realMesh.name];
         }
 
         private void Start()
@@ -43,15 +55,15 @@ namespace ModalAnalysis
             objTransform = GetComponent<Transform>();
             objCollider = GetComponent<Collider>();
 
-            int ntris = meshData.Triangles.Length / 3;
+            int ntris = MeshData.Triangles.Length / 3;
             float[][] barycenters = new float[ntris][];
             int[] kdnodes = new int[ntris];
 
-            for (int i = 0, k = 0; i < meshData.Triangles.Length; i+=3, k++)
+            for (int i = 0, k = 0; i < MeshData.Triangles.Length; i+=3, k++)
             {
-                Vector3 l = meshData.Vertices[meshData.Triangles[i]];
-                Vector3 m = meshData.Vertices[meshData.Triangles[i + 1]];
-                Vector3 n = meshData.Vertices[meshData.Triangles[i + 2]];
+                Vector3 l = MeshData.Vertices[MeshData.Triangles[i]];
+                Vector3 m = MeshData.Vertices[MeshData.Triangles[i + 1]];
+                Vector3 n = MeshData.Vertices[MeshData.Triangles[i + 2]];
 
                 barycenters[k] = getBarycenter(l, m, n);
                 kdnodes[k] = i;
@@ -104,9 +116,9 @@ namespace ModalAnalysis
                 var kdsearch_result = triTree.NearestNeighbors(querypoint, neighbors: 1);
 
                 int triangleOffset = kdsearch_result[0].Item2;
-                Vector3 p = meshData.Vertices[meshData.Triangles[triangleOffset]];
-                Vector3 q = meshData.Vertices[meshData.Triangles[triangleOffset + 1]];
-                Vector3 r = meshData.Vertices[meshData.Triangles[triangleOffset + 2]];
+                Vector3 p = MeshData.Vertices[MeshData.Triangles[triangleOffset]];
+                Vector3 q = MeshData.Vertices[MeshData.Triangles[triangleOffset + 1]];
+                Vector3 r = MeshData.Vertices[MeshData.Triangles[triangleOffset + 2]];
 
                 float wa, wb, wc;
                 GetBarycentricWeights(colpoint, p, q, r, out wa, out wb, out wc);
@@ -115,9 +127,9 @@ namespace ModalAnalysis
                 barycentricWeights[os + 0] = wa;
                 barycentricWeights[os + 1] = wb;
                 barycentricWeights[os + 2] = wc;
-                triangles[os + 0] = meshData.Triangles[triangleOffset];
-                triangles[os + 1] = meshData.Triangles[triangleOffset + 1];
-                triangles[os + 2] = meshData.Triangles[triangleOffset + 2];
+                triangles[os + 0] = MeshData.Triangles[triangleOffset];
+                triangles[os + 1] = MeshData.Triangles[triangleOffset + 1];
+                triangles[os + 2] = MeshData.Triangles[triangleOffset + 2];
             }
 
             return (triangles, barycentricWeights);

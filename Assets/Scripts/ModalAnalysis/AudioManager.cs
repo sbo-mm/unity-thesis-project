@@ -1,8 +1,9 @@
 ﻿using System;
-using System.Threading;
+using System.Threading.Tasks;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Audio;
 
 namespace ModalAnalysis
 {
@@ -12,7 +13,18 @@ namespace ModalAnalysis
         [SerializeField]
         private int AQBufferSize = 128;
 
+        [SerializeField]
+        private AudioMixerGroup mixer;
+
+        [SerializeField]
+        private AudioListener mainListener;
+
         // Properties
+        public AudioListener MainListener
+        {
+            get { return mainListener; }
+        }
+
         public int UnityAudioBufferSize
         {
             get { return unityDspBufferSize; }
@@ -45,38 +57,56 @@ namespace ModalAnalysis
         private int audioQueueBufferSize;
         private int unityDspBufferSize;
 
-        // Static
-        private static List<Thread> _synthesisThreads
-            = new List<Thread>();
-
-        private static CancellationTokenSource _audioThreadCancellationSrc
-            = new CancellationTokenSource();
-
-        public static Thread GetSynthesisThread(Action<object> synthesisCallback)
-        {
-            Thread _internalThread
-                = new Thread(() => synthesisCallback(_audioThreadCancellationSrc.Token));
-            _synthesisThreads.Add(_internalThread);
-            return _internalThread;
-        }
+        // Utility Private
+        private float mixerDefaultVolume;
+        private readonly float[] NULLCLIP = new float[0];
+        private Dictionary<AudioClip, float[]> loopSamplesDict;
 
         private void Awake()
         {
             sampleRate = AudioSettings.outputSampleRate;
             AudioQueueBufferSize = AQBufferSize;
             AudioSettings.GetDSPBufferSize(out unityDspBufferSize, out int _);
+
+            // misc setup
+            mixer.audioMixer.GetFloat("Volume", out mixerDefaultVolume);
+            loopSamplesDict = new Dictionary<AudioClip, float[]>();
         }
 
-        private void OnApplicationQuit()
+        public void GetLoopSamplesForAudioClip(AudioClip clip, out float[] samples)
         {
-            _audioThreadCancellationSrc.Cancel();
-            foreach (var _thread in _synthesisThreads)
+            if (clip == null)
             {
-                if (!_thread.IsAlive)
-                    continue;
-                _thread.Join();
+                samples = NULLCLIP;
+                return;
             }
-            _audioThreadCancellationSrc.Dispose();
+
+            if (!loopSamplesDict.ContainsKey(clip))
+            {
+                int nsamples = clip.samples;
+                float[] sampleBuffer = new float[nsamples];
+                clip.GetData(sampleBuffer, 0);
+                loopSamplesDict.Add(clip, sampleBuffer);
+            }
+
+            if (!loopSamplesDict.TryGetValue(clip, out samples))
+                samples = NULLCLIP;
+        }
+
+        public void OnPause()
+        {
+            if (mixer == null)
+                return;
+
+            mixer.audioMixer.SetFloat("Volume", -80f);
+        }
+
+        public void OnResume()
+        {
+            if (mixer == null)
+                return;
+
+            mixer.audioMixer.SetFloat("Volume", mixerDefaultVolume);
         }
     }
 }

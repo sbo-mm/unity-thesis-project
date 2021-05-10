@@ -136,7 +136,7 @@ class ModalModel(object):
 		self.gains = None
 
 		t0 = 15; t1 = 2000; t2 = 8000;
-		y0 = 3; y1 = 4; y2 = 90;
+		y0 = 3; y1 = 45; y2 = 90;
 		m0 = (y1 - y0) / (t1 - t0);
 		m1 = (y2 - y1) / (t2 - t1);
 		self.dlc = lambda x: (y0 + m0*(x - t0)) * (x >= 0) * (x <= t1)\

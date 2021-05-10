@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace ModalAnalysis
@@ -10,56 +7,67 @@ namespace ModalAnalysis
     public class FrictionForce : ForceProfile, IAudioForce
     {
         // Private
-        private AudioClip clip;
+        private bool hasLoop;
         private FrictionTable ftable;
 
         private ConcurrentQueue<float> frequencyrb;
         private ConcurrentQueue<float> levelrb;
 
         // Const
-        private float DBDIFF = 0.5f;
-        private float FPCTDIFF = 0.1f;
+        private float DBDIFF = 1e-10f;
+        private float FPCTDIFF = 1e-10f;
 
         // RT Variables
         private float prevSetFreqPct;
         private float prevSetLevel;
 
-        public FrictionForce(float sampleRate) : base(sampleRate)
+        public FrictionForce(float[] audioLoop, float sampleRate) : base(sampleRate)
         {
-            clip = (AudioClip)Resources.Load("AudioFiles/SURFACE1");
-            Debug.Assert(clip.channels == 1, "AudioClip contains >1 channels");
-
-            ftable = new FrictionTable(clip, sampleRate);
-            frequencyrb = new ConcurrentQueue<float>();
-            levelrb = new ConcurrentQueue<float>();
+            if (audioLoop.Length > 0)
+            {
+                hasLoop = true;
+                ftable = new FrictionTable(audioLoop, sampleRate);
+                frequencyrb = new ConcurrentQueue<float>();
+                levelrb = new ConcurrentQueue<float>();
+            }
         }
 
         public void SetFrequencyPct(float pct)
         {
+            if (!hasLoop)
+                return;
+
+            if (frequencyrb.Count < 5)
+                frequencyrb.Enqueue(pct);
+            /*
             if (Mathf.Abs(prevSetFreqPct - pct) > FPCTDIFF)
             {
                 frequencyrb.Enqueue(pct);
                 prevSetFreqPct = pct;
             }
+            */
         }
 
         public void SetLevel(float levelDb)
         {
-            if (Mathf.Abs(prevSetLevel - levelDb) > DBDIFF)
-            {
+            if (!hasLoop)
+                return;
+
+            if (levelrb.Count < 5)
                 levelrb.Enqueue(levelDb);
-                prevSetLevel = levelDb;
-            }
         }
 
         public void GetForce(float[] output, int nsamples)
         {
+            if (!hasLoop)
+                return;
+                
             if (frequencyrb.TryDequeue(out float fpct))
                 ftable.TargetFrequency = fpct;
 
             if (levelrb.TryDequeue(out float level))
                 ftable.TargetLevel = level;
-
+            
             ftable.GetNextAudioBlock(output, nsamples);
         }
 
@@ -93,7 +101,7 @@ namespace ModalAnalysis
                 get { return targetFrequency;  }
                 set
                 {
-                    float multiplier = Mathf.Clamp(value, 0.1f, 10.0f);
+                    float multiplier = Mathf.Clamp(value, 0.05f, 10.0f);
                     targetFrequency = multiplier * baseFrequency;
                 }
             }
@@ -111,19 +119,18 @@ namespace ModalAnalysis
                 }
             }
 
-            public FrictionTable(AudioClip src, float sampleRate)
+            public FrictionTable(float[] srcloop, float sampleRate)
             {
                 this.sampleRate = sampleRate;
 
-                tableSize = src.samples - 1;
-                waveTable = new float[tableSize + 1];
-                src.GetData(waveTable, 0);
+                tableSize = srcloop.Length - 1;
+                waveTable = srcloop;
                 waveTable[tableSize] = waveTable[0];
-                
-                currentIndex = 0.0f;
-                tableDelta   = 0.0f;
 
-                baseLevel = 500.0f;
+                currentIndex = 0.0f;
+                tableDelta = 0.0f;
+
+                baseLevel = 35000.0f;
                 currentLevel = targetLevel = baseLevel;
 
                 baseFrequency = sampleRate / tableSize;
@@ -162,12 +169,9 @@ namespace ModalAnalysis
             {
                 if (currentLevel < 0.01f)
                     return;
-
+                    
                 float localTargetFrequency = targetFrequency;
-                //float localTargetLevel = targetLevel;
-
                 float freqDiff  = localTargetFrequency - currentFrequency;
-                //float levelDiff = localTargetLevel - currentLevel;
 
                 if (Mathf.Abs(freqDiff) > 5e-03f)
                 {
@@ -181,17 +185,6 @@ namespace ModalAnalysis
                     }
                     currentFrequency = localTargetFrequency;
                 }
-                /*else if (Mathf.Abs(levelDiff) > 5e-03f)
-                {
-                    float levelDelta = (localTargetLevel - currentLevel) / nsamples;
-                    for (int sample = 0; sample < nsamples; sample++)
-                    {
-                        float gain = currentLevel;
-                        currentLevel += levelDelta;
-                        output[sample] += GetNextSample() * currentLevel;
-                    }
-                    currentLevel = localTargetLevel;
-                }*/
                 else
                 {
                     for (int sample = 0; sample < nsamples; sample++)

@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Linq;
-using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Concurrent;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace ModalAnalysis
@@ -30,12 +28,23 @@ namespace ModalAnalysis
         private float[] yt_1; // Filter history
         private float[] yt_2; // ^^
 
+        private void SetupModel()
+        {
+            ModalManager modalManager = GameObject
+                .Find("Manager")
+                .GetComponent<ModalManager>();
+
+            ModalMesh modalMesh = GetComponent<ModalMesh>();
+            Model = modalManager.GetModalModel(modalMesh.MeshData);
+        }
+
         new private void Start()
         {
             base.Start();
-            random = new FastRandom();
+            SetupModel();
 
-            scratchBuffer = new float[AudioQueueBufferSize];
+            random = new FastRandom();
+            scratchBuffer = new float[UnityAudioBufferSize];
 
             nf = Model.NumberOfModes;
             twoRCosTheta = new float[nf];
@@ -58,8 +67,8 @@ namespace ModalAnalysis
 
             yt_1 = new float[nf];
             yt_2 = new float[nf];
-            
-            MarkReadyForAudioRendering();
+
+            AudioObjectReady = true;
         }
 
         private float getGainAt(int idx)
@@ -72,7 +81,7 @@ namespace ModalAnalysis
 
         private void SetGains(float[] gains, int npoints, int[] impactPoints, float[] weights)
         {
-            //float oneOverN = 1.0f / (float)npoints;
+            float oneOverN = 1.0f / (float)npoints;
             for (int n = 0; n < npoints * 3; n+=3)
             {
                 for (int i = 0; i < nf; i++)
@@ -88,7 +97,7 @@ namespace ModalAnalysis
                     float w2 = weights[n + 2];
 
                     float gain = g0 * w0 + g1 * w1 + g2 * w2;
-                    gains[i] += gain * RSinTheta[i];
+                    gains[i] += gain * RSinTheta[i] * oneOverN;
                 }
             }
         }
@@ -101,13 +110,12 @@ namespace ModalAnalysis
 
         private void ComputeSoundBuffer(float[] output, float[] force, int nsamples)
         {
-            Array.Clear(output, 0, nsamples);
+            MemClear(ref output[0], nsamples);
 
             if (!pampR.SequenceEqual(ampR))
                 Array.Copy(ampR, pampR, ampR.Length);
-
+                
             float denormalFix = random.GetRandom(-1.0f, 1.0f) * 1.0e-9f;
-
             for (int i = 0; i < nf; i++)
             {
                 float tmp_twoRCosTheta = twoRCosTheta[i];
@@ -143,5 +151,6 @@ namespace ModalAnalysis
 
             ComputeSoundBuffer(output, scratchBuffer, nsamples);
         }
+
     }
 }

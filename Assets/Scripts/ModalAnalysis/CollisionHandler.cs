@@ -1,19 +1,46 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEnginePhysicsUtil;
 
 namespace ModalAnalysis
 {
-    [RequireComponent(typeof(Rigidbody), typeof(ModalMesh))]
+    [RequireComponent(typeof(Rigidbody), typeof(ModalMesh), typeof(ModalSonicObject))]
     public class CollisionHandler : MonoBehaviour
     {
-        [Range(0.1f, 10.0f)]
-        public float SampleFrequency = 1.0f;
+        // Unity Public
+        [SerializeField]
+        AudioClip frictionLoop;
 
-        [Range(-80.0f, 20.0f)]
-        public float SampleLevel = 0.0f;
+        [SerializeField, Range(1f, 10f)]
+        public float MaxFreqPct = 6.5f;
 
-        //private float psamp, plevel;
+        [SerializeField, Range(-80f, 20f)]
+        public float FrictionGainDb = 0f;
+
+        [SerializeField, Range(0f, short.MaxValue)]
+        public float ImpactGain = 350f;
+
+        // Properties
+        public float MaxSpeed
+        {
+            get { return kinematicUtil != null ? kinematicUtil.GetMaxSpeed() : 0; }
+        }
+
+        public float MaxAcceleration
+        {
+            get { return kinematicUtil != null ? kinematicUtil.GetMaxAcceleration(): 0; }
+        }
+
+        public bool OnGround
+        {
+            get { return kinematicUtil != null && kinematicUtil.IsGrounded(); }
+        }
+
+        public Vector3 CurrentVelocity
+        {
+            get { return objRigidbody.velocity; }
+        }
 
         // Private
         private AudioManager audioManager;
@@ -21,12 +48,18 @@ namespace ModalAnalysis
         private ModalSonicObject sonicObject;
         private ModalMesh modalMesh;
 
-        private ImpactForce impact;
+        private SoftImpactForce softImpact;
         private FrictionForce friction;
+
+        private IKinematicParameters kinematicUtil;
 
         // Setup Variables
         private const int MAXCP = 10; 
         private ContactPoint[] contactPoints;
+
+        private const float MINIMPACTDURATION = 0.02f;
+        private const float MAXIMPACTDURATION = 0.04f;
+
         private bool ready = false;
 
         private void Start()
@@ -37,28 +70,28 @@ namespace ModalAnalysis
             sonicObject  = GetComponent<ModalSonicObject>();
             modalMesh    = GetComponent<ModalMesh>();
 
-            impact = new ImpactForce(audioManager.SampleRate);
-            friction = new FrictionForce(audioManager.SampleRate);
+            kinematicUtil = GetComponent<IKinematicParameters>();
+
+            audioManager.GetLoopSamplesForAudioClip(
+                frictionLoop, out float[] audioLoop
+            );
+
+            softImpact = new SoftImpactForce(audioManager.SampleRate);
+            friction = new FrictionForce(audioLoop, audioManager.SampleRate);
+
             contactPoints = new ContactPoint[MAXCP];
 
-            sonicObject.ImpactForceModel = impact;
+            sonicObject.ImpactForceModel = softImpact;
             sonicObject.FrictionForceModel = friction;
 
+            // Basically turn of all audio from the 
+            // friction generator
             friction.SetLevel(-80.0f);
 
+            // Stupid flag to prevent unity
+            // from executing the collision callbacks
+            // before initialization is done
             ready = true;
-
-
-            float tvel = ((Physics.gravity.magnitude / objRigidbody.drag)
-                - Time.fixedDeltaTime * Physics.gravity.magnitude) / objRigidbody.mass;
-            Debug.Log($"{name}-> Terminal velocity: {tvel}");
-
-        }
-
-        private void Update()
-        {
-            friction.SetFrequencyPct(SampleFrequency);
-            friction.SetLevel(SampleLevel);
         }
 
         private void SolveContacts(Collision collision, out int npoints)
@@ -111,27 +144,89 @@ namespace ModalAnalysis
             if (!ready)
                 return;
 
+            var other = collision.gameObject;
+
+            if (other.GetComponent<Rigidbody>().isKinematic
+                && objRigidbody.isKinematic)
+            {
+                return;
+            }
+
             // Solve collision and set corresponding gains
             SolveCollisionVertices(collision);
 
             // Add an impact to to the impact generator
-            float impactMag = collision.relativeVelocity.sqrMagnitude;
-            float impactVelocity = objRigidbody.mass * impactMag;
-            impact.AddImpact(impactVelocity);
+            float maxSpeed;
+            if (objRigidbody.isKinematic)
+            {
+                CollisionHandler otherCollisionHandler =
+                    other.GetComponent<CollisionHandler>();
+                maxSpeed = otherCollisionHandler.MaxSpeed;
+            }
+            else
+            {
+                maxSpeed = MaxSpeed;
+            }
+
+            Vector3 relativeVelocity =
+                collision.relativeVelocity;
+            relativeVelocity =
+                Vector3.ClampMagnitude(relativeVelocity, maxSpeed);
+
+            float impactMag = relativeVelocity.magnitude;
+            float linearImpactMag = impactMag / maxSpeed;
+            float impactDuration =
+                Mathf.Lerp(MINIMPACTDURATION, MAXIMPACTDURATION, linearImpactMag);
+
+            softImpact.Hit(impactDuration, ImpactGain * impactMag);
         }
-        
+
         private void OnCollisionStay(Collision collision)
         {
             if (!ready)
                 return;
-            //if (name == "SonicSphere")
-            //    Debug.Log($"{name}: {objRigidbody.velocity.magnitude}, " +
-            //    	$"{objRigidbody.velocity.sqrMagnitude}, " +
-            //    	$"{objRigidbody.angularVelocity.magnitude}");
 
+            var other = collision.gameObject;
 
+            if (other.GetComponent<Rigidbody>().isKinematic
+                && objRigidbody.isKinematic)
+            {
+                return;
+            }
 
+            // Solve collision and set corresponding gains
+            SolveCollisionVertices(collision);
+
+            float maxSpeed, currentSpeed;
+            if (!objRigidbody.isKinematic)
+            {
+                // Check if only transient contanct
+                if (!OnGround)
+                    return;
+
+                currentSpeed = CurrentVelocity.magnitude;
+                maxSpeed = MaxSpeed;
+            }
+            else
+            {
+                CollisionHandler otherCollisionHandler =
+                    other.GetComponent<CollisionHandler>();
+                currentSpeed = 
+                    otherCollisionHandler.CurrentVelocity.magnitude;
+                maxSpeed =
+                    otherCollisionHandler.MaxSpeed;
+            }
+            
+            if (currentSpeed > 0.1f)
+                friction.SetLevel(FrictionGainDb);
+
+            float freqDelta =
+                (currentSpeed / MaxSpeed) * Time.deltaTime;
+            float freqScale =
+                Mathf.MoveTowards(currentSpeed, MaxSpeed, freqDelta);
+            float freqPct = 
+                Mathf.Clamp01(freqScale / MaxSpeed);
+            friction.SetFrequencyPct(freqPct * MaxFreqPct);
         }
-
     }
 }

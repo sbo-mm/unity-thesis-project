@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -219,5 +220,19 @@ namespace B83.MeshHelper
             vertices = newVerts.Select(v => v.pos).ToArray();
             trianlges = RemapAndGetTriangles();
         }
+
+        /*
+        public async Task<(Vector3[], int[])> WeldAndGet()
+        {
+            CreateVertexList();
+            return await Task.Run<(Vector3[], int[])>(() =>
+            {
+                RemoveDuplicates();
+                //var vertices = ne
+                return null;
+            });
+        }
+        */       
+
     }
 }

@@ -9,7 +9,6 @@ namespace ModalAnalysis
     {
         // Private
         private float[] outputBuffer;
-        private Thread synthesisThread;
 
         protected new void Start()
         {

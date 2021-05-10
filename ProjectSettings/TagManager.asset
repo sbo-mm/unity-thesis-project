@@ -5,6 +5,8 @@ TagManager:
   serializedVersion: 2
   tags:
   - SonicObject
+  - BalanceTarget
+  - BalanceObstacle
   layers:
   - Default
   - TransparentFX

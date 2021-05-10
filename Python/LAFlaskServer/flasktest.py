@@ -49,7 +49,7 @@ class mmAPI_ModalModel(Resource):
 		cont = request.json
 		# TODO: validate json
 
-		print(cont)
+		#print(cont)
 
 		model = mmAPI_ModalModel.make_model(cont)
 		model["id"] = model_id
@@ -65,7 +65,8 @@ class mmAPI_ModalModel(Resource):
 		model = mmAPI_ModalModel.make_model(cont)
 		model["id"] = model_id
 
-		print(model)
+		print("freqs:", model["freqs"])
+		print("decays:", model["decays"])
 		# TODO: store model
 
 		return model
